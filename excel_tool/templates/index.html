@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Excel Comparison Tool</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body { background:#f8f9fa; font-family: Arial, sans-serif; }
+    .container { max-width: 1400px; }
+
+    .excel-table { border-collapse: separate; border-spacing: 0; border: 2px solid #d1d5db; background: white; }
+    .excel-table th { background: #f3f4f6; border: 1px solid #d1d5db; padding: 8px 12px; font-weight: 600; text-align: center; position: sticky; top: 0; z-index: 10; }
+    .excel-table td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: center; background: white; }
+    .excel-table tr:nth-child(even) td { background: #f9fafb; }
+
+    .diff-original { background-color: #ff6b6b !important; color: white !important; font-weight: bold; }   /* Red for original differences */
+    .diff-website  { background-color: #51cf66 !important; color: white !important; font-weight: bold; }   /* Green for website differences */
+    .diff-marker   { background-color: #ffd43b !important; color: black !important; font-weight: bold; }  /* Yellow for differences between them */
+    .only-original { background-color: #ffc7ce !important; }   /* light red */
+    .only-website  { background-color: #c6efce !important; }   /* light green */
+
+    .clickable { color:#0d6efd; cursor:pointer; text-decoration: underline; }
+    .clickable:hover { background-color: #e3f2fd; }
+    .badge-clickable { cursor: pointer; transition: all 0.2s; font-size: 0.9em; padding: 0.5em 0.8em; }
+    .badge-clickable:hover { transform: scale(1.1); }
+    .summary-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; }
+    .detail-header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border-radius: 10px 10px 0 0; }
+    .tab-content-wrapper { max-height: 700px; overflow: auto; border: 1px solid #dee2e6; border-radius: 0 0 8px 8px; background: white; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; transition: transform 0.2s; border: 2px solid transparent; }
+    .stat-card:hover { transform: translateY(-5px); border-color: #0d6efd; }
+    .stat-card.active { border-color: #0d6efd; box-shadow: 0 4px 20px rgba(13, 110, 253, 0.3); }
+    .stat-number { font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem; }
+    .loading-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #f3f3f3; border-top: 2px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .column-header-group { background: #e5e7eb; font-weight: bold; text-align: center; border: 2px solid #d1d5db; }
+    .btn-gradient { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 600; font-size: 1.15rem; padding: 0.75rem 1.5rem; border-radius: 0.75rem; border: none; position: relative; overflow: hidden; transition: all 0.3s ease-in-out; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-gradient-download { background: linear-gradient(135deg, #10b981 0%, #3ac08d 100%); color: white; font-weight: 600; font-size: 1.15rem; padding: 0.75rem 1.5rem; border-radius: 0.75rem; border: none; position: relative; overflow: hidden; transition: all 0.3s ease-in-out; display: inline-flex; align-items: center; justify-content: center; }
+    .spinner-border { width: 1.2rem; height: 1.2rem; }
+    .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="container my-4">
+    <h2 class="text-center mb-4">Excel Comparison Tool</h2>
+  
+    <div class="card summary-card shadow-sm p-4 mb-4">
+      <div class="col-md-2 justify-content-center">
+          <label class="form-label">Country</label>
+          <!-- Changed: show only country options (no placeholder) -->
+          <select class="form-select" id="countrySelect">
+            <option value="usa" selected>USA</option>
+            <option value="india">India</option>
+          </select>
+        </div><br>
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Original Excel File</label>
+          <input type="file" class="form-control" id="originalFile" accept=".xlsx,.xls" />
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Website Excel File</label>
+          <input type="file" class="form-control" id="websiteFile" accept=".xlsx,.xls" />
+        </div>
+  
+      </div>
+
+      <div class="d-flex gap-3 mt-4 justify-content-center flex-wrap">
+        <button class="btn btn-gradient btn-lg position-relative" id="compareBtn" onclick="loadSummary()">
+          <span id="compareBtnText">Compare Files</span>
+          <div class="spinner-border spinner-border-sm text-light position-absolute top-50 end-0 translate-middle-y me-3" id="compareSpinner" style="display:none;"></div>
+        </button>
+
+        <button id="downloadBtn" class="btn btn-gradient-download btn-lg position-relative" style="display:none;">
+          <span id="downloadBtnText">Download Excel</span>
+          <div class="spinner-border spinner-border-sm text-light position-absolute top-50 end-0 translate-middle-y me-3" id="downloadSpinner" style="display:none;"></div>
+        </button>
+      </div>
+    </div>
+
+    <div id="summaryContainer" class="mb-4"></div>
+
+    <div id="sheetSection" style="display:none;">
+      <div class="card shadow-sm">
+        <div class="card-header detail-header">
+          <h4 class="mb-0 text-center">Sheet Details: <span id="sheetTitle"></span></h4>
+        </div>
+        <div class="card-body">
+          <div id="sheetStats" class="stats-grid mb-4"></div>
+          <ul class="nav nav-pills nav-fill mb-0" id="tabs"></ul>
+          <div class="tab-content-wrapper">
+            <div id="detailsContainer" class="p-3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Return the effective number of data rows.
+// For array-of-arrays where first element is header row, subtract 1.
+function effectiveCount(list) {
+  if (!list) return 0;
+  if (Array.isArray(list)) {
+    if (list.length === 0) return 0;
+    // if first element looks like a header row (array of strings), subtract it
+    if (Array.isArray(list[0])) {
+      return Math.max(0, list.length - 1);
+    }
+    // array of objects or simple values -> count as is
+    return list.length;
+  }
+  return 0;
+}
+
+let summaryData = null;
+let lastFormData = null;
+let sheetDetails = null;
+let currentTab = "different_rows";
+let currentSheetName = "";
+let rawExcelData = null;
+
+function getCategoryName(index) {
+  const categories = ["", "", "different rows", "common rows", "rows only in original", "rows only in website"];
+  return categories[index] || "data";
+}
+function getTabKey(index) {
+  const mapping = {2: "different_rows", 3: "common_rows", 4: "only_in_original_rows", 5: "only_in_website_rows"};
+  return mapping[index] || "different_rows";
+}
+function getBadgeClass(index) {
+  const classes = ["", "", "badge bg-warning", "badge bg-success", "badge bg-danger", "badge bg-info"];
+  return classes[index] || "badge bg-secondary";
+}
+
+function headerIndicatesOriginal(h) {
+  if (!h) return false;
+  return /\bOriginal\b/i.test(String(h));
+}
+function headerIndicatesWebsite(h) {
+  if (!h) return false;
+  return /\bWebsite\b/i.test(String(h));
+}
+function headerIndicatesDiff(h) {
+  if (!h) return false;
+  return /\bDiff\b/i.test(String(h)) || /difference/i.test(String(h));
+}
+
+function transformHeader(h) {
+  if (typeof h !== 'string') return String(h).trim();
+  
+  const baseHeader = h.replace(/\s*\((Original|Website|Diff)\)\s*$/i, '').trim();
+  
+  if (headerIndicatesOriginal(h)) {
+    return baseHeader + " (Original)";
+  }
+  if (headerIndicatesWebsite(h)) {
+    return baseHeader + " (Website)";
+  }
+  if (headerIndicatesDiff(h)) {
+    return baseHeader + " (Diff)";
+  }
+  
+  return baseHeader; 
+}
+
+function cleanHeader(h) {
+  if (typeof h !== 'string') return String(h);
+  
+  if (h.includes('STGS')) {
+    let cleaned = h.replace(/Original\s*STGS/gi, '')
+                   .replace(/Website\s*STGS/gi, '')
+                   .replace(/DIFF\s*STGS/gi, '')
+                   .replace(/\s+/g, ' ')
+                   .trim();
+    return cleaned || h; 
+  }
+  
+  return h.replace(/\s*\((Original|Website|Diff)\)\s*$/i, '').trim();
+}
+
+function isDifferentValue(cellValue, originalValue, websiteValue) {
+  const cellStr = String(cellValue || '').trim();
+  const origStr = String(originalValue || '').trim();
+  const webStr = String(websiteValue || '').trim();
+  
+  if (!isNaN(cellStr) && !isNaN(origStr) && !isNaN(webStr)) {
+    return parseFloat(origStr) !== parseFloat(webStr);
+  }
+  
+  return origStr !== webStr;
+}
+
+/* Helper: hide and clear the bottom details area */
+function hideDetailsSection() {
+  const sheetSection = document.getElementById("sheetSection");
+  const detailsContainer = document.getElementById("detailsContainer");
+  const sheetStats = document.getElementById("sheetStats");
+  const tabs = document.getElementById("tabs");
+  const sheetTitle = document.getElementById("sheetTitle");
+
+  if (sheetSection) sheetSection.style.display = "none";
+  if (detailsContainer) detailsContainer.innerHTML = "";
+  if (sheetStats) sheetStats.innerHTML = "";
+  if (tabs) tabs.innerHTML = "";
+  if (sheetTitle) sheetTitle.innerText = "";
+  sheetDetails = null;
+  currentSheetName = "";
+  currentTab = "different_rows";
+}
+
+/* Make sure changing country clears any existing details */
+document.getElementById("countrySelect").addEventListener("change", function () {
+  hideDetailsSection();
+});
+
+/* load summary */
+async function loadSummary() {
+  // hide any previously shown details immediately
+  hideDetailsSection();
+
+  const originalFile = document.getElementById("originalFile").files[0];
+  const websiteFile  = document.getElementById("websiteFile").files[0];
+  const country = document.getElementById("countrySelect").value;
+
+  if (!originalFile || !websiteFile) { alert("Please select both Excel files"); return; }
+
+  // New: require country selection
+  if (!country) { alert("Please select country"); return; }
+
+  document.getElementById("compareBtnText").textContent = "Comparing...";
+  document.getElementById("compareSpinner").style.display = "inline-block";
+
+  const formData = new FormData();
+  formData.append("original_file", originalFile);
+  formData.append("website_file", websiteFile);
+  formData.append("country", country);
+  lastFormData = formData;
+
+  document.getElementById("summaryContainer").innerHTML =
+    '<div class="alert alert-info"><span class="loading-spinner me-2"></span>Comparing files, please wait...</div>';
+
+  try {
+    const res = await fetch("/api/compare/json", { method: "POST", body: formData });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    summaryData = data.results;
+    renderSummary();
+    document.getElementById("downloadBtn").style.display = "inline-block";
+
+    const excelRes = await fetch("/api/compare", { method: "POST", body: formData });
+    rawExcelData = await excelRes.blob();
+  } catch (err) {
+    document.getElementById("summaryContainer").innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+    console.error(err);
+  } finally {
+    document.getElementById("compareBtnText").textContent = "Compare Files";
+    document.getElementById("compareSpinner").style.display = "none";
+  }
+}
+
+/*download excel*/
+document.getElementById("downloadBtn").addEventListener("click", async () => {
+  if (!lastFormData) { alert("Please compare files first!"); return; }
+
+  // New: ensure a country is selected before attempting download
+  const country = document.getElementById("countrySelect").value;
+  if (!country) { alert("Please select country"); return; }
+
+  const btnText = document.getElementById("downloadBtnText");
+  const spinner = document.getElementById("downloadSpinner");
+  btnText.textContent = "Downloading..."; spinner.style.display = "inline-block";
+  try {
+    // Always send country with download
+    lastFormData.set("country", country);
+    const res = await fetch("/api/compare/excel", { method: "POST", body: lastFormData });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "Comparison_Result.xlsx";
+    document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
+    btnText.textContent = "Download Excel"; spinner.style.display = "none";
+  }
+});
+
+/*render summary table*/
+function renderSummary() {
+    const container = document.getElementById("summaryContainer");
+    container.innerHTML = "";
+    if (!summaryData || summaryData.length <= 1) {
+      container.innerHTML = '<div class="alert alert-warning">No comparison data available.</div>';
+      return;
+    }
+
+    const card = document.createElement("div"); card.className = "card shadow-sm";
+    const cardHeader = document.createElement("div"); cardHeader.className = "card-header bg-primary text-white"; cardHeader.innerHTML = "<h5 class='mb-0'>Comparison Summary</h5>";
+    card.appendChild(cardHeader);
+
+    const cardBody = document.createElement("div"); cardBody.className = "card-body p-0";
+    const table = document.createElement("table"); table.className = "table table-hover mb-0 excel-table";
+
+    const thead = document.createElement("thead"); const headerRow = document.createElement("tr");
+    ["Sheet","Rows Compared","Cells Different","Common Rows","Only in Original","Only in Website"].forEach(h => {
+      const th = document.createElement("th"); th.innerText = h; headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow); table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    summaryData.slice(1).forEach(row => {
+      const tr = document.createElement("tr");
+      row.forEach((cell, idx) => {
+        const td = document.createElement("td");
+        // For columns that represent row-lists (Common Rows, Only in Original, Only in Website)
+        // backend stores header + data, so display actual data count = max(0, raw - 1)
+        let displayValue = cell;
+        if ((idx === 3 || idx === 4 || idx === 5) && !isNaN(cell)) {
+          displayValue = Math.max(0, parseInt(cell) - 1);
+        }
+
+        if (idx === 0) {
+          td.innerHTML = `<strong>${cell}</strong>`;
+        } else if (idx >= 2 && !isNaN(cell) && parseInt(displayValue) > 0) {
+          // show clickable badge for Cells Different (idx===2) and the row-list columns (3,4,5)
+          const badge = document.createElement("span");
+          badge.className = getBadgeClass(idx) + " badge-clickable";
+          badge.innerText = displayValue;
+          // use the central request wrapper that blocks other clicks with an overlay
+          badge.onclick = function (e) {
+            requestSheetDetails(row[0], idx).catch(err => {
+              console.error('Error loading sheet details', err);
+              // show error in UI
+              document.getElementById("detailsContainer").innerHTML = '<div class="alert alert-danger">Error: ' + (err && err.message ? err.message : err) + '</div>';
+            });
+          };
+          badge.title = `Click to view ${getCategoryName(idx)} for ${row[0]} (${displayValue})`;
+          td.appendChild(badge);
+        } else {
+          // other columns (Rows Compared, zero counts, etc.)
+          td.innerText = displayValue;
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody); cardBody.appendChild(table); card.appendChild(cardBody); container.appendChild(card);
+}
+
+/* load a sheet's details */
+async function loadSheetDetails(sheetName, typeIndex) {
+  const originalFile = document.getElementById("originalFile").files[0];
+  const websiteFile  = document.getElementById("websiteFile").files[0];
+  const country = document.getElementById("countrySelect").value;
+  if (!originalFile || !websiteFile) { alert("Please select both files"); return; }
+
+  const formData = new FormData();
+  formData.append("original_file", originalFile);
+  formData.append("website_file", websiteFile);
+  formData.append("sheet_name", sheetName);
+  formData.append("country", country);
+
+  currentSheetName = sheetName;
+  document.getElementById("detailsContainer").innerHTML = '<div class="alert alert-info text-center"><span class="loading-spinner me-2"></span>Loading sheet details...</div>';
+  document.getElementById("sheetSection").style.display = "block";
+  document.getElementById("sheetTitle").innerText = sheetName;
+
+  try {
+    const res = await fetch("/api/compare/sheet/diff", { method: "POST", body: formData });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    sheetDetails = data;
+    currentTab = getTabKey(typeIndex);
+
+    renderSheetStatistics();
+    createTabs();
+    renderDetails();
+  } catch (err) {
+    document.getElementById("detailsContainer").innerHTML = '<div class="alert alert-danger">Error: ' + err.message + '</div>';
+    console.error(err);
+  }
+}
+
+function getSheetStatistics(data) {
+  return [
+    { title: "Different Rows", count: effectiveCount(data.different_rows), color: "#f59e0b", icon: "⚠", key: "different_rows" },
+    { title: "Common Rows", count: effectiveCount(data.common_rows), color: "#10b981", icon: "✓", key: "common_rows" },
+    { title: "Only in Original", count: effectiveCount(data.only_in_original_rows), color: "#ef4444", icon: "◀", key: "only_in_original_rows" },
+    { title: "Only in Website", count: effectiveCount(data.only_in_website_rows), color: "#3b82f6", icon: "▶", key: "only_in_website_rows" }
+  ];
+}
+
+function renderSheetStatistics() {
+  const container = document.getElementById("sheetStats"); container.innerHTML = "";
+  if (!sheetDetails) return;
+
+  const stats = getSheetStatistics(sheetDetails);
+  stats.forEach(stat => {
+    const statCard = document.createElement("div"); statCard.className = "stat-card";
+    if (currentTab === stat.key) statCard.classList.add("active");
+    if (stat.count > 0) {
+      statCard.style.cursor = "pointer";
+      statCard.onclick = () => { currentTab = stat.key; createTabs(); renderDetails(); renderSheetStatistics(); };
+    } else {
+      statCard.style.opacity = "0.6";
+    }
+    statCard.innerHTML = `<div class="stat-number" style="color:${stat.color}">${stat.icon} ${stat.count}</div><div class="text-muted">${stat.title}</div>`;
+    container.appendChild(statCard);
+  });
+}
+
+function createTabs() {
+  const tabs = document.getElementById("tabs"); tabs.innerHTML = "";
+  const categories = {
+    different_rows: { label: "Different Rows", icon: "⚠", class: "btn-outline-warning" },
+    common_rows: { label: "Common Rows", icon: "✓", class: "btn-outline-success" },
+    only_in_original_rows: { label: "Only in Original", icon: "◀", class: "btn-outline-danger" },
+    only_in_website_rows: { label: "Only in Website", icon: "▶", class: "btn-outline-info" }
+  };
+  Object.entries(categories).forEach(([key, cfg]) => {
+    const count = effectiveCount(sheetDetails[key]);
+    const li = document.createElement("li"); li.className = "nav-item";
+    const a = document.createElement("a");
+    a.className = `nav-link ${cfg.class} ${currentTab === key ? "active" : ""}`;
+    a.href = "#";
+    a.innerHTML = `${cfg.icon} ${cfg.label} <span class="badge bg-secondary ms-1">${count}</span>`;
+    if (count > 0) {
+      a.onclick = (e) => { e.preventDefault(); currentTab = key; createTabs(); renderDetails(); };
+    } else {
+      a.style.opacity = "0.5"; a.style.pointerEvents = "none";
+    }
+    li.appendChild(a);
+    tabs.appendChild(li);
+  });
+}
+
+/* render details highlighting*/
+function renderDetails() {
+  const container = document.getElementById("detailsContainer");
+  container.innerHTML = "";
+
+  if (!sheetDetails || effectiveCount(sheetDetails[currentTab]) === 0) {
+    container.innerHTML = `<div class="alert alert-info text-center">No ${currentTab.replace(/_/g," ")} available.</div>`;
+    return;
+  }
+
+  const rows = sheetDetails[currentTab];
+  const first = rows[0];
+  const isArrayRows = Array.isArray(first);
+
+  const table = document.createElement("table");
+  table.className = "table table-bordered table-hover excel-table";
+
+  const thead = document.createElement("thead");
+  const tbody = document.createElement("tbody");
+
+  if (isArrayRows) {
+    const originalHeaders = rows[0]; 
+    const transformedHeaders = rows[0].map(h => transformHeader(h));
+    
+    const headerTr = document.createElement("tr");
+    transformedHeaders.forEach(h => { 
+      const th = document.createElement("th"); 
+      th.innerText = h; 
+      headerTr.appendChild(th); 
+    });
+    thead.appendChild(headerTr);
+
+    // only iterate data rows (skip header at index 0)
+    rows.slice(1).forEach(rowArr => {
+      const tr = document.createElement("tr");
+      originalHeaders.forEach((originalHdr, idx) => {
+        const td = document.createElement("td");
+        const cellValue = (Array.isArray(rowArr) ? (rowArr[idx] ?? "") : "");
+        td.innerText = cellValue;
+
+        if (currentTab === "different_rows") {
+          if (headerIndicatesOriginal(originalHdr)) {
+            const websiteIdx = originalHeaders.findIndex(h => headerIndicatesWebsite(h) && cleanHeader(h) === cleanHeader(originalHdr));
+            if (websiteIdx !== -1) {
+              const websiteValue = rowArr[websiteIdx] ?? "";
+              if (isDifferentValue(cellValue, cellValue, websiteValue)) {
+                td.classList.add("diff-original");
+              }
+            } else {
+              td.classList.add("diff-original");
+            }
+          }
+          
+          if (headerIndicatesWebsite(originalHdr)) {
+            const originalIdx = originalHeaders.findIndex(h => headerIndicatesOriginal(h) && cleanHeader(h) === cleanHeader(originalHdr));
+            if (originalIdx !== -1) {
+              const originalValue = rowArr[originalIdx] ?? "";
+              if (isDifferentValue(cellValue, originalValue, cellValue)) {
+                td.classList.add("diff-website");
+              }
+            } else {
+              td.classList.add("diff-website");
+            }
+          }
+          
+          if (headerIndicatesDiff(originalHdr)) {
+            const baseName = cleanHeader(originalHdr);
+            const originalIdx = originalHeaders.findIndex(h => headerIndicatesOriginal(h) && cleanHeader(h) === baseName);
+            const websiteIdx = originalHeaders.findIndex(h => headerIndicatesWebsite(h) && cleanHeader(h) === baseName);
+            
+            if (originalIdx !== -1 && websiteIdx !== -1) {
+              const originalValue = rowArr[originalIdx] ?? "";
+              const websiteValue = rowArr[websiteIdx] ?? "";
+              if (isDifferentValue(cellValue, originalValue, websiteValue)) {
+                td.classList.add("diff-marker");
+              }
+            } else if (cellValue && cellValue !== "" && cellValue !== "0") {
+              td.classList.add("diff-marker");
+            }
+          }
+        }
+        
+        if (currentTab === "only_in_original_rows") td.classList.add("only-original");
+        if (currentTab === "only_in_website_rows") td.classList.add("only-website");
+
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+  } else {
+    const originalKeys = Object.keys(first);
+    const transformedKeys = originalKeys.map(k => transformHeader(k));
+    
+    const headerTr = document.createElement("tr");
+    transformedKeys.forEach(k => { 
+      const th = document.createElement("th"); 
+      th.innerText = k; 
+      headerTr.appendChild(th); 
+    });
+    thead.appendChild(headerTr);
+
+    rows.forEach(obj => {
+      const tr = document.createElement("tr");
+      originalKeys.forEach(key => {
+        const td = document.createElement("td");
+        const cellValue = obj[key] ?? "";
+        td.innerText = cellValue;
+
+        if (currentTab === "different_rows") {
+          if (headerIndicatesOriginal(key)) {
+            const baseName = cleanHeader(key);
+            const websiteKey = originalKeys.find(k => headerIndicatesWebsite(k) && cleanHeader(k) === baseName);
+            if (websiteKey) {
+              const websiteValue = obj[websiteKey] ?? "";
+              if (isDifferentValue(cellValue, cellValue, websiteValue)) {
+                td.classList.add("diff-original");
+              }
+            } else {
+              td.classList.add("diff-original");
+            }
+          }
+          
+          if (headerIndicatesWebsite(key)) {
+            const baseName = cleanHeader(key);
+            const originalKey = originalKeys.find(k => headerIndicatesOriginal(k) && cleanHeader(k) === baseName);
+            if (originalKey) {
+              const originalValue = obj[originalKey] ?? "";
+              if (isDifferentValue(cellValue, originalValue, cellValue)) {
+                td.classList.add("diff-website");
+              }
+            } else {
+              td.classList.add("diff-website");
+            }
+          }
+          
+          if (headerIndicatesDiff(key)) {
+            const baseName = cleanHeader(key);
+            const originalKey = originalKeys.find(k => headerIndicatesOriginal(k) && cleanHeader(k) === baseName);
+            const websiteKey = originalKeys.find(k => headerIndicatesWebsite(k) && cleanHeader(k) === baseName);
+            
+            if (originalKey && websiteKey) {
+              const originalValue = obj[originalKey] ?? "";
+              const websiteValue = obj[websiteKey] ?? "";
+              if (isDifferentValue(cellValue, originalValue, websiteValue)) {
+                td.classList.add("diff-marker");
+              }
+            } else if (cellValue && cellValue !== "" && cellValue !== "0") {
+              td.classList.add("diff-marker");
+            }
+          }
+        }
+        
+        if (currentTab === "only_in_original_rows") td.classList.add("only-original");
+        if (currentTab === "only_in_website_rows") td.classList.add("only-website");
+
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+/* Prevent interacting with other controls while a sheet details request is in progress */
+let detailsLoading = false;
+
+/* create a full-screen overlay to block clicks while loading details */
+function showGlobalLoadingOverlay() {
+  if (document.getElementById('globalLoadingBlocker')) return;
+  const blocker = document.createElement('div');
+  blocker.id = 'globalLoadingBlocker';
+  Object.assign(blocker.style, {
+    position: 'fixed',
+    inset: '0',
+    background: 'rgba(255,255,255,0.0)',
+    zIndex: 9999,
+    cursor: 'wait'
+  });
+  document.body.appendChild(blocker);
+}
+function removeGlobalLoadingOverlay() {
+  const b = document.getElementById('globalLoadingBlocker');
+  if (b) b.remove();
+}
+
+/* Wrapper that sets the lock, shows overlay, calls loadSheetDetails and clears lock when done */
+function requestSheetDetails(sheetName, typeIndex) {
+  if (detailsLoading) return Promise.resolve();
+  detailsLoading = true;
+  showGlobalLoadingOverlay();
+  // call the async loader; ensure overlay cleared even on error
+  return loadSheetDetails(sheetName, typeIndex)
+    .catch((err) => {
+      // propagate after cleanup
+      throw err;
+    })
+    .finally(() => {
+      detailsLoading = false;
+      removeGlobalLoadingOverlay();
+    });
+}
+</script>
+</body>
+</html>
