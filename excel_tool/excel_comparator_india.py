@@ -199,7 +199,7 @@ def compare_excel_with_gain_summary_inline_India(
             elif "date" in col.lower():
                 # normalize dates to ISO date if possible
                 try:
-                    ts = pd.to_datetime(v, errors="coerce")
+                    ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
                     if pd.isna(ts):
                         parts.append(s.lower())
                     else:
