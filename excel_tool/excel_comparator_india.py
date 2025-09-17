@@ -117,15 +117,13 @@ def norm_for_json(v):
     return str(v)
 
 
-# New helper to ensure sheet titles are <= 31 chars and unique within workbook
 def make_safe_title(title: str, wb: openpyxl.workbook.workbook.Workbook) -> str:
     if title is None:
         title = ""
-    max_len = 31
+    max_len = 50
     base = title[:max_len]
     safe = base
     i = 1
-    # if exact title exists, attempt to append suffix like " (1)" ensuring total length <= max_len
     while safe in wb.sheetnames:
         suffix = f" ({i})"
         keep_len = max_len - len(suffix)
@@ -175,7 +173,7 @@ def compare_excel_with_gain_summary_inline_India(
             return str(num)
         return s.lower()
 
-    # New helper: build composite key from Account Number, Investment Name and Purchase Date
+    #Account Number, Investment Name and Purchase Date for match name
     def composite_acct_key(row, key_cols):
         """
         Normalize and combine values from key_cols into a single string key.
@@ -193,11 +191,9 @@ def compare_excel_with_gain_summary_inline_India(
                 return None
 
             if col.lower() == "account number":
-                # prefer normalized numeric account if possible
                 num = to_int_or_none(v)
                 parts.append(str(num) if num is not None else s.lower())
             elif "date" in col.lower():
-                # normalize dates to ISO date if possible
                 try:
                     ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
                     if pd.isna(ts):
@@ -301,7 +297,6 @@ def compare_excel_with_gain_summary_inline_India(
             if sheet_name in ("Gain Summary", "ScheduleFA", "transaction_details","transaction_details_by_gain") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
                 make_tripled_headers()
 
-                # For transaction detail sheets prefer using Account Number + Investment Name + Purchase Date
                 preferred_keys = ["Account Number", "Investment Name", "Purchase Date"]
                 use_composite = all(k in df_orig.columns and k in df_web.columns for k in preferred_keys)
                 if use_composite:
@@ -309,12 +304,10 @@ def compare_excel_with_gain_summary_inline_India(
                 else:
                     key_cols = ["Account Number"]
 
-                # Deduplicate using chosen key columns where possible
                 try:
                     df_orig = df_orig.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
                     df_web  = df_web.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
                 except Exception:
-                    # fallback if drop_duplicates fails for any reason
                     df_orig = df_orig.reset_index(drop=True)
                     df_web = df_web.reset_index(drop=True)
 
@@ -405,7 +398,6 @@ def compare_excel_with_gain_summary_inline_India(
                         diff_count += 1
 
                 else:
-                    # build maps using composite or single key as selected above
                     orig_map = {}
                     web_map = {}
                     if len(key_cols) == 1 and key_cols[0] == "Account Number":
@@ -592,7 +584,7 @@ def compare_excel_with_gain_summary_inline_India(
                 "only_in_website_rows": structured_only_web,
                 "rows_compared": rows_compared,
                 "cells_different": diff_count
-                , "_main_ws_name": main_title   # preserve the actual styled sheet name for later reuse
+                , "_main_ws_name": main_title 
             }
 
             summary_rows.append([sheet_name, rows_compared, diff_count, len(structured_common), len(structured_only_orig), len(structured_only_web)])
@@ -634,7 +626,6 @@ def compare_excel_with_gain_summary_inline_India(
             if len(lst) > 1:
                 remaining_rows.extend(lst[1:])
 
-        # For transaction detail sheets, create dedicated sheets for each category (include header)
         if sheet_name in ("transaction_details", "transaction_details_by_gain"):
             for key, label in (("different_rows", "Different Rows"), ("only_in_original_rows", "Only in Original"), ("only_in_website_rows", "Only in Website")):
                 lst = sdata.get(key) or []
@@ -648,7 +639,6 @@ def compare_excel_with_gain_summary_inline_India(
                     ws_cat = output_wb.create_sheet(title=cat_title)
                     for r in lst:
                         ws_cat.append(r)
-                    # auto-size columns
                     for col_idx in range(1, ws_cat.max_column + 1):
                         col_letter = get_column_letter(col_idx)
                         max_len = 0
@@ -660,13 +650,10 @@ def compare_excel_with_gain_summary_inline_India(
                                     max_len = max(max_len, 10)
                         ws_cat.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-        # If we previously created a styled "main" worksheet for this sheet, reuse it (preserve fills/styles).
         main_ws_name = sdata.get("_main_ws_name")
         if main_ws_name and main_ws_name in output_wb.sheetnames:
             new_ws = output_wb[main_ws_name]
-            # No need to re-append rows — the styled sheet already contains the detailed output.
         else:
-            # create new sheet with safe name (no styled sheet existed)
             safe_name = make_safe_title(sheet_name, output_wb)
             if safe_name in output_wb.sheetnames:
                 try:

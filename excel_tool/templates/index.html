@@ -97,17 +97,14 @@
   </div>
 
 <script>
-// Return the effective number of data rows.
-// For array-of-arrays where first element is header row, subtract 1.
+    
 function effectiveCount(list) {
   if (!list) return 0;
   if (Array.isArray(list)) {
     if (list.length === 0) return 0;
-    // if first element looks like a header row (array of strings), subtract it
     if (Array.isArray(list[0])) {
       return Math.max(0, list.length - 1);
     }
-    // array of objects or simple values -> count as is
     return list.length;
   }
   return 0;
@@ -191,7 +188,6 @@ function isDifferentValue(cellValue, originalValue, websiteValue) {
   return origStr !== webStr;
 }
 
-/* Helper: hide and clear the bottom details area */
 function hideDetailsSection() {
   const sheetSection = document.getElementById("sheetSection");
   const detailsContainer = document.getElementById("detailsContainer");
@@ -209,14 +205,12 @@ function hideDetailsSection() {
   currentTab = "different_rows";
 }
 
-/* Make sure changing country clears any existing details */
 document.getElementById("countrySelect").addEventListener("change", function () {
   hideDetailsSection();
 });
 
 /* load summary */
 async function loadSummary() {
-  // hide any previously shown details immediately
   hideDetailsSection();
 
   const originalFile = document.getElementById("originalFile").files[0];
@@ -225,7 +219,6 @@ async function loadSummary() {
 
   if (!originalFile || !websiteFile) { alert("Please select both Excel files"); return; }
 
-  // New: require country selection
   if (!country) { alert("Please select country"); return; }
 
   document.getElementById("compareBtnText").textContent = "Comparing...";
@@ -263,7 +256,6 @@ async function loadSummary() {
 document.getElementById("downloadBtn").addEventListener("click", async () => {
   if (!lastFormData) { alert("Please compare files first!"); return; }
 
-  // New: ensure a country is selected before attempting download
   const country = document.getElementById("countrySelect").value;
   if (!country) { alert("Please select country"); return; }
 
@@ -271,7 +263,6 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
   const spinner = document.getElementById("downloadSpinner");
   btnText.textContent = "Downloading..."; spinner.style.display = "inline-block";
   try {
-    // Always send country with download
     lastFormData.set("country", country);
     const res = await fetch("/api/compare/excel", { method: "POST", body: lastFormData });
     if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -313,8 +304,6 @@ function renderSummary() {
       const tr = document.createElement("tr");
       row.forEach((cell, idx) => {
         const td = document.createElement("td");
-        // For columns that represent row-lists (Common Rows, Only in Original, Only in Website)
-        // backend stores header + data, so display actual data count = max(0, raw - 1)
         let displayValue = cell;
         if ((idx === 3 || idx === 4 || idx === 5) && !isNaN(cell)) {
           displayValue = Math.max(0, parseInt(cell) - 1);
@@ -323,22 +312,18 @@ function renderSummary() {
         if (idx === 0) {
           td.innerHTML = `<strong>${cell}</strong>`;
         } else if (idx >= 2 && !isNaN(cell) && parseInt(displayValue) > 0) {
-          // show clickable badge for Cells Different (idx===2) and the row-list columns (3,4,5)
           const badge = document.createElement("span");
           badge.className = getBadgeClass(idx) + " badge-clickable";
           badge.innerText = displayValue;
-          // use the central request wrapper that blocks other clicks with an overlay
           badge.onclick = function (e) {
             requestSheetDetails(row[0], idx).catch(err => {
               console.error('Error loading sheet details', err);
-              // show error in UI
               document.getElementById("detailsContainer").innerHTML = '<div class="alert alert-danger">Error: ' + (err && err.message ? err.message : err) + '</div>';
             });
           };
           badge.title = `Click to view ${getCategoryName(idx)} for ${row[0]} (${displayValue})`;
           td.appendChild(badge);
         } else {
-          // other columns (Rows Compared, zero counts, etc.)
           td.innerText = displayValue;
         }
         tr.appendChild(td);
@@ -469,7 +454,6 @@ function renderDetails() {
     });
     thead.appendChild(headerTr);
 
-    // only iterate data rows (skip header at index 0)
     rows.slice(1).forEach(rowArr => {
       const tr = document.createElement("tr");
       originalHeaders.forEach((originalHdr, idx) => {
@@ -604,7 +588,6 @@ function renderDetails() {
   container.appendChild(table);
 }
 
-/* Prevent interacting with other controls while a sheet details request is in progress */
 let detailsLoading = false;
 
 /* create a full-screen overlay to block clicks while loading details */
@@ -626,15 +609,12 @@ function removeGlobalLoadingOverlay() {
   if (b) b.remove();
 }
 
-/* Wrapper that sets the lock, shows overlay, calls loadSheetDetails and clears lock when done */
 function requestSheetDetails(sheetName, typeIndex) {
   if (detailsLoading) return Promise.resolve();
   detailsLoading = true;
   showGlobalLoadingOverlay();
-  // call the async loader; ensure overlay cleared even on error
   return loadSheetDetails(sheetName, typeIndex)
     .catch((err) => {
-      // propagate after cleanup
       throw err;
     })
     .finally(() => {
