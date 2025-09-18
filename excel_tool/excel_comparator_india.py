@@ -175,10 +175,6 @@ def compare_excel_with_gain_summary_inline_India(
 
     #Account Number, Investment Name and Purchase Date for match name
     def composite_acct_key(row, key_cols):
-        """
-        Normalize and combine values from key_cols into a single string key.
-        Returns None if any required part is missing/blank.
-        """
         parts = []
         for col in key_cols:
             if col not in row.index:
