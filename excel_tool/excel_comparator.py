@@ -547,14 +547,10 @@ def compare_excel_with_gain_summary_inline(
             if len(lst) > 1:
                 remaining_rows.extend(lst[1:])
 
-        # If we previously created a styled "main" worksheet for this sheet, reuse it (preserve fills/styles).
         main_ws_name = sdata.get("_main_ws_name")
         if main_ws_name and main_ws_name in output_wb.sheetnames:
-            # reuse the styled sheet created earlier
             new_ws = output_wb[main_ws_name]
-            # The styled sheet already contains the detailed rows and formatting.
         else:
-            # create new plain consolidated sheet
             if sheet_name in output_wb.sheetnames:
                 try:
                     del output_wb[sheet_name]
