@@ -7,7 +7,7 @@ import pandas as pd
 import openpyxl
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
-import traceback  # added import for detailed exception traces
+import traceback
 
 
 NUMERIC_TOLERANCE = 1
