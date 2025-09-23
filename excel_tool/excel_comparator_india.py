@@ -147,6 +147,7 @@ def compare_excel_with_gain_summary_inline_India(
             'ScheduleFA':         {'header_row': 8, 'data_start_row': 8},
             'transaction_details':         {'header_row': 2, 'data_start_row': 3},
             'transaction_details_by_gain':         {'header_row': 2, 'data_start_row': 3},
+            'dividend_transaction_details': {'header_row': 2, 'data_start_row': 3},
         }
 
     red_fill   = PatternFill(start_color="fbd9d3", end_color="fbd9d3", fill_type="solid")
@@ -209,7 +210,7 @@ def compare_excel_with_gain_summary_inline_India(
 
             common_cols = [c for c in df_orig.columns if c in df_web.columns]
 
-            if sheet_name in ("ScheduleFA", "transaction_details", "transaction_details_by_gain"):
+            if sheet_name in ("ScheduleFA", "transaction_details", "transaction_details_by_gain","dividend_transaction_details"):
                 common_cols = [
                     c for c in common_cols 
                     if c != "Sl. No."
@@ -261,10 +262,10 @@ def compare_excel_with_gain_summary_inline_India(
                 structured_only_orig.append([h for h in headers])
                 structured_only_web.append([h for h in headers])
 
-            if sheet_name in ("Gain Summary", "ScheduleFA", "transaction_details","transaction_details_by_gain") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
+            if sheet_name in ("Gain Summary", "ScheduleFA", "transaction_details","transaction_details_by_gain","dividend_transaction_details") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
                 make_tripled_headers()
 
-                preferred_keys = ["Account Number", "Investment Name", "Purchase Date"]
+                preferred_keys = ["Account Number", "Investment Name", "Purchase Date",]
                 use_composite = all(k in df_orig.columns and k in df_web.columns for k in preferred_keys)
                 if use_composite:
                     key_cols = preferred_keys
@@ -566,9 +567,9 @@ def compare_excel_with_gain_summary_inline_India(
 
     allowed_sheets = {
         "Summary",
-        "Gain Summary", "ScheduleFA", "transaction_details", "transaction_details_by_gain",
+        "Gain Summary", "ScheduleFA", "transaction_details", "transaction_details_by_gain","dividend_transaction_details",
         "Gain Summary Common Rows", "ScheduleFA Common Rows",
-        "transaction_details Common Rows", "transaction_details_by_gain Common Rows"
+        "transaction_details Common Rows", "transaction_details_by_gain Common Rows","dividend_transaction_details Common Rows",
     }
 
     for sheet in list(output_wb.sheetnames):

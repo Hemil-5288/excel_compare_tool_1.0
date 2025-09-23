@@ -275,11 +275,7 @@ def compare_excel_with_gain_summary_inline(
                             for col in common_cols:
                                 val = norm_for_json(orig_row[col])
                                 triple_row.extend([val, val, ""])
-                                ci = common_cols.index(col)
-                                main_ws.cell(row=out_row, column=ci * 3 + 1, value=orig_row[col])
-                                main_ws.cell(row=out_row, column=ci * 3 + 2, value=web_row[col])
                             structured_common.append(triple_row)
-                            out_row += 1
                             continue
 
                         row_diffs_here = 0
@@ -368,11 +364,7 @@ def compare_excel_with_gain_summary_inline(
                             for col in common_cols:
                                 val = norm_for_json(orig_row[col])
                                 triple_row.extend([val, val, ""])
-                                ci = common_cols.index(col)
-                                main_ws.cell(row=out_row, column=ci * 3 + 1, value=orig_row[col])
-                                main_ws.cell(row=out_row, column=ci * 3 + 2, value=web_row[col])
                             structured_common.append(triple_row)
-                            out_row += 1
                             continue
 
                         row_diffs_here = 0
