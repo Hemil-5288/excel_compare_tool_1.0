@@ -221,7 +221,6 @@ def compare_excel_with_gain_summary_inline_India(
             structured_only_web  = []
 
             if not common_cols:
-                # create only main and common sheet placeholders
                 output_wb.create_sheet(title=make_safe_title(sheet_name, output_wb))
                 output_wb.create_sheet(title=make_safe_title(f"{sheet_name} Common Rows", output_wb))
                 summary_rows.append([sheet_name, 0, 0, 0, 0, 0])
@@ -238,13 +237,9 @@ def compare_excel_with_gain_summary_inline_India(
             df_orig = df_orig[common_cols].copy()
             df_web  = df_web[common_cols].copy()
 
-            # we'll *not* write data rows directly to a worksheet during comparison
-            # instead collect rows in structured_* lists and write them later (one place)
             original_ws = original_wb[sheet_name] if sheet_name in original_wb.sheetnames else None
             website_ws  = website_wb[sheet_name]  if sheet_name in website_wb.sheetnames  else None
             main_title = make_safe_title(sheet_name, output_wb)
-            # create the main sheet early only for header styling if desired
-            # we will recreate it later to ensure it's clean
             _ = output_wb.create_sheet(title=main_title)
 
             diff_count       = 0
@@ -311,7 +306,6 @@ def compare_excel_with_gain_summary_inline_India(
                                 val = norm_for_json(orig_row[col])
                                 triple_row.extend([val, val, ""])
                             structured_common.append(triple_row)
-                            # do NOT write to main sheet here
                             continue
 
                         row_diffs_here = 0
@@ -392,7 +386,6 @@ def compare_excel_with_gain_summary_inline_India(
                                 val = norm_for_json(orig_row[col])
                                 triple_row.extend([val, val, ""])
                             structured_common.append(triple_row)
-                            # do NOT write to main
                             continue
 
                         row_diffs_here = 0
@@ -453,7 +446,6 @@ def compare_excel_with_gain_summary_inline_India(
                     if all(values_equal(orig_row[col], web_row[col]) for col in common_cols):
                         rowvals = [norm_for_json(orig_row[col]) for col in common_cols] + ["Common"]
                         structured_common.append(rowvals)
-                        # do NOT write to main sheet here
                         continue
 
                     row_diffs_here = 0
@@ -503,7 +495,6 @@ def compare_excel_with_gain_summary_inline_India(
                 "error": str(e)
             }
 
-    # --- Assemble final sheets: create Common Rows sheets and recreate main sheets cleanly ---
     for sheet_name, sdata in list(sheets_structured.items()):
         if not isinstance(sdata, dict):
             continue
@@ -511,7 +502,6 @@ def compare_excel_with_gain_summary_inline_India(
         common_rows = sdata.get("common_rows") or []
         if len(common_rows) > 1:
             safe_common_title = make_safe_title(f"{sheet_name} Common Rows", output_wb)
-            # remove existing common sheet if any and recreate to ensure clean
             if safe_common_title in output_wb.sheetnames:
                 try:
                     del output_wb[safe_common_title]
@@ -531,7 +521,6 @@ def compare_excel_with_gain_summary_inline_India(
                             max_len = max(max_len, 10)
                 ws_common.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-        # build header (prefer different_rows, then common_rows, then only_in_original_rows, then only_in_website_rows)
         header = None
         for key in ("different_rows", "common_rows", "only_in_original_rows", "only_in_website_rows"):
             lst = sdata.get(key) or []
@@ -539,14 +528,12 @@ def compare_excel_with_gain_summary_inline_India(
                 header = lst[0]
                 break
 
-        # collect remaining rows (these are rows that should appear in the main sheet)
         remaining_rows = []
         for key in ("different_rows", "only_in_original_rows", "only_in_website_rows"):
             lst = sdata.get(key) or []
             if len(lst) > 1:
                 remaining_rows.extend(lst[1:])
 
-        # recreate the main sheet cleanly (delete if present and create anew)
         main_ws_name = sdata.get("_main_ws_name")
         safe_name = main_ws_name if main_ws_name else make_safe_title(sheet_name, output_wb)
         if safe_name in output_wb.sheetnames:
@@ -570,7 +557,6 @@ def compare_excel_with_gain_summary_inline_India(
                         max_len = max(max_len, 10)
             new_ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-    # Create Summary sheet at the front
     ws_summary = output_wb.create_sheet(make_safe_title("Summary", output_wb), index=0)
     ws_summary.append(["Excel Comparison Report"])
     ws_summary.append([f"Generated On:  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
@@ -578,7 +564,6 @@ def compare_excel_with_gain_summary_inline_India(
     for row in summary_rows:
         ws_summary.append(row)
 
-    # Remove any unexpected sheets (safety cleanup) - keep exactly these
     allowed_sheets = {
         "Summary",
         "Gain Summary", "ScheduleFA", "transaction_details", "transaction_details_by_gain",
