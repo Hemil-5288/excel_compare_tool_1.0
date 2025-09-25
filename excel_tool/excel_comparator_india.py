@@ -12,6 +12,10 @@ import traceback
 
 NUMERIC_TOLERANCE = 1
 
+original_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")  # light green
+website_fill  = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")  # light yellow
+diff_fill     = PatternFill(start_color="FBD9D3", end_color="FBD9D3", fill_type="solid")  # light red
+
 
 def coerce_numeric(value):
     if pd.isna(value) or value is None:
@@ -174,7 +178,6 @@ def compare_excel_with_gain_summary_inline_India(
             return str(num)
         return s.lower()
 
-    #Account Number, Investment Name and Purchase Date for match name
     def composite_acct_key(row, key_cols):
         parts = []
         for col in key_cols:
@@ -271,6 +274,11 @@ def compare_excel_with_gain_summary_inline_India(
                     key_cols = preferred_keys
                 else:
                     key_cols = ["Account Number"]
+
+                if sheet_name == "dividend_transaction_details":
+                    special_keys = ["Account Number", "symbol", "date received"]
+                    if all(k in df_orig.columns and k in df_web.columns for k in special_keys):
+                        key_cols = special_keys
 
                 try:
                     df_orig = df_orig.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
@@ -547,6 +555,14 @@ def compare_excel_with_gain_summary_inline_India(
             new_ws.append(header)
         for r in remaining_rows:
             new_ws.append(r)
+            for col_idx, val in enumerate(r, start=1):
+                if col_idx % 3 == 1:
+                    new_ws.cell(row=new_ws.max_row, column=col_idx).fill = original_fill
+                elif col_idx % 3 == 2:
+                    new_ws.cell(row=new_ws.max_row, column=col_idx).fill = website_fill
+                elif col_idx % 3 == 0:
+                    if val != "" and val != 0:
+                        new_ws.cell(row=new_ws.max_row, column=col_idx).fill = diff_fill
         for col_idx in range(1, new_ws.max_column + 1):
             col_letter = get_column_letter(col_idx)
             max_len = 0

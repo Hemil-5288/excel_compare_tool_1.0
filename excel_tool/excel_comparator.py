@@ -7,9 +7,14 @@ import pandas as pd
 import openpyxl
 from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
+import traceback
 
 
 NUMERIC_TOLERANCE = 1
+
+original_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")  # light green
+website_fill  = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")  # light yellow
+diff_fill     = PatternFill(start_color="FBD9D3", end_color="FBD9D3", fill_type="solid")  # light red
 
 
 def coerce_numeric(value):
@@ -115,6 +120,22 @@ def norm_for_json(v):
             return v
     return str(v)
 
+def make_safe_title(title: str, wb: openpyxl.workbook.workbook.Workbook) -> str:
+    if title is None:
+        title = ""
+    max_len = 50
+    base = title[:max_len]
+    safe = base
+    i = 1
+    while safe in wb.sheetnames:
+        suffix = f" ({i})"
+        keep_len = max_len - len(suffix)
+        safe = (base[:keep_len] + suffix) if keep_len > 0 else suffix[:max_len]
+        i += 1
+        if i > 999:
+            break
+    return safe
+
 
 # Main compare function
 def compare_excel_with_gain_summary_inline(
@@ -128,6 +149,8 @@ def compare_excel_with_gain_summary_inline(
             'Gain Summary': {'header_row': 2, 'data_start_row': 3},
             '8938':         {'header_row': 6, 'data_start_row': 7},
             'FBAR':         {'header_row': 2, 'data_start_row': 3},
+            'transaction_details': {'header_row': 2,'data_start_row': 3},
+            "interest_details": {'header_row': 2,'data_start_row': 3}
         }
 
     red_fill   = PatternFill(start_color="fbd9d3", end_color="fbd9d3", fill_type="solid")
@@ -153,6 +176,34 @@ def compare_excel_with_gain_summary_inline(
         if num is not None:
             return str(num)
         return s.lower()
+    
+    def composite_acct_key(row, key_cols):
+        parts = []
+        for col in key_cols:
+            if col not in row.index:
+                return None
+            v = row[col]
+            if pd.isna(v) or v is None:
+                return None
+            s = str(v).strip()
+            if s == "":
+                return None
+
+            if col.lower() == "account number":
+                num = to_int_or_none(v)
+                parts.append(str(num) if num is not None else s.lower())
+            elif "date" in col.lower():
+                try:
+                    ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
+                    if pd.isna(ts):
+                        parts.append(s.lower())
+                    else:
+                        parts.append(ts.date().isoformat())
+                except Exception:
+                    parts.append(s.lower())
+            else:
+                parts.append(s.lower())
+        return "|".join(parts)
 
     for sheet_name, cfg in sheets_config.items():
         try:
@@ -161,7 +212,7 @@ def compare_excel_with_gain_summary_inline(
 
             common_cols = [c for c in df_orig.columns if c in df_web.columns]
 
-            if sheet_name in ("8938", "FBAR"):
+            if sheet_name in ("8938", "FBAR","transaction_details","interest_details"):
                common_cols = [c for c in common_cols if c.strip().lower() not in ("sl. no.", "sl no", "slno")]
 
             structured_common = []
@@ -188,11 +239,11 @@ def compare_excel_with_gain_summary_inline(
 
             original_ws = original_wb[sheet_name] if sheet_name in original_wb.sheetnames else None
             website_ws  = website_wb[sheet_name]  if sheet_name in website_wb.sheetnames  else None
-            main_ws     = output_wb.create_sheet(title=sheet_name)
+            main_title = make_safe_title(sheet_name, output_wb)
+            _ = output_wb.create_sheet(title=main_title)
 
             diff_count       = 0
             rows_compared    = 0
-            common_rows_list = []
 
             def make_tripled_headers():
                 headers = []
@@ -202,23 +253,6 @@ def compare_excel_with_gain_summary_inline(
                 structured_diff.append([h for h in headers])
                 structured_only_orig.append([h for h in headers])
                 structured_only_web.append([h for h in headers])
-                for ci, h in enumerate(headers, start=1):
-                    main_ws.cell(row=1, column=ci, value=h)
-                    if original_ws is not None:
-                        try:
-                            src = original_ws.cell(row=cfg['header_row'], column=((ci - 1) // 3) + 1)
-                            safe_copy_cell_style(src, main_ws.cell(row=1, column=ci))
-                        except Exception:
-                            pass
-
-                for idx_col, _ in enumerate(common_cols, start=1):
-                    width = None
-                    if original_ws is not None:
-                        width = safe_get_column_width(original_ws, get_column_letter(idx_col))
-                    for offset in range(3):
-                        out_col_letter = get_column_letter((idx_col - 1) * 3 + offset + 1)
-                        if width:
-                            main_ws.column_dimensions[out_col_letter].width = width
 
             def make_simple_headers():
                 headers = [c for c in common_cols] + ["Row Status"]
@@ -227,29 +261,34 @@ def compare_excel_with_gain_summary_inline(
                 structured_only_orig.append([h for h in headers])
                 structured_only_web.append([h for h in headers])
 
-                for ci, h in enumerate(headers, start=1):
-                    main_ws.cell(row=1, column=ci, value=h)
-                    if original_ws is not None:
-                        try:
-                            src = original_ws.cell(row=cfg['header_row'], column=ci)
-                            safe_copy_cell_style(src, main_ws.cell(row=1, column=ci))
-                        except Exception:
-                            pass
 
-                main_ws.column_dimensions[get_column_letter(len(headers))].width = 18
-
-            if sheet_name in ("Gain Summary", "8938", "FBAR") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
+            if sheet_name in ("Gain Summary", "8938", "FBAR","transaction_details","interest_details") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
                 make_tripled_headers()
 
-                df_orig = df_orig.drop_duplicates(subset=["Account Number"], keep="first").reset_index(drop=True)
-                df_web  = df_web.drop_duplicates(subset=["Account Number"], keep="first").reset_index(drop=True)
+                preferred_keys = ["Account Number", "Investment Name", "Purchase Date",]
+                use_composite = all(k in df_orig.columns and k in df_web.columns for k in preferred_keys)
+                if use_composite:
+                    key_cols = preferred_keys
+                else:
+                    key_cols = ["Account Number"]
+
+                if sheet_name == "interest_details":
+                    special_keys = ["Account Number","date received"]
+                    if all(k in df_orig.columns and k in df_web.columns for k in special_keys):
+                        key_cols = special_keys
+
+                try:
+                    df_orig = df_orig.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
+                    df_web  = df_web.drop_duplicates(subset=key_cols, keep="first").reset_index(drop=True)
+                except Exception:
+                    df_orig = df_orig.reset_index(drop=True)
+                    df_web = df_web.reset_index(drop=True)
 
                 # Gain Summary
                 if sheet_name == "Gain Summary":
                     web_key_index = build_key_index(df_web, max_parts=2)
                     orig_keys_set = {row_key(r, max_parts=2) for _, r in df_orig.iterrows()}
 
-                    out_row = 2
                     for orig_idx, orig_row in df_orig.iterrows():
                         k = row_key(orig_row, max_parts=2)
                         match_indices = web_key_index.get(k, [])
@@ -260,10 +299,7 @@ def compare_excel_with_gain_summary_inline(
                             for col in common_cols:
                                 o_val = norm_for_json(orig_row[col])
                                 triple_row.extend([o_val, "", "Only in Original"])
-                                main_ws.cell(row=out_row, column=((common_cols.index(col)) * 3) + 1, value=o_val)
-                                main_ws.cell(row=out_row, column=((common_cols.index(col)) * 3) + 3, value="Only in Original").fill = red_fill
                             structured_only_orig.append(triple_row)
-                            out_row += 1
                             rows_compared += 1
                             diff_count += 1
                             continue
@@ -295,17 +331,8 @@ def compare_excel_with_gain_summary_inline(
                                 row_diffs_here += 1
 
                             triple_row.extend([norm_for_json(o_val), norm_for_json(w_val), norm_for_json(diff_val)])
-                            ci = common_cols.index(col)
-                            c_orig = main_ws.cell(row=out_row, column=ci * 3 + 1, value=o_val)
-                            c_web  = main_ws.cell(row=out_row, column=ci * 3 + 2, value=w_val)
-                            c_diff = main_ws.cell(row=out_row, column=ci * 3 + 3, value=diff_val)
-                            if is_diff:
-                                c_orig.fill = red_fill
-                                c_web.fill  = green_fill
-                                c_diff.fill = red_fill
 
                         structured_diff.append(triple_row)
-                        out_row += 1
                         rows_compared += 1
                         diff_count += row_diffs_here
 
@@ -318,27 +345,31 @@ def compare_excel_with_gain_summary_inline(
                             w_val = norm_for_json(web_row[col])
                             triple_row.extend(["", w_val, "Only in Website"])
                         structured_only_web.append(triple_row)
-                        for col in common_cols:
-                            ci = common_cols.index(col)
-                            main_ws.cell(row=out_row, column=ci * 3 + 2, value=web_row[col])
-                            main_ws.cell(row=out_row, column=ci * 3 + 3, value="Only in Website").fill = green_fill
-                        out_row += 1
                         rows_compared += 1
                         diff_count += 1
 
                 else:
                     orig_map = {}
-                    for i, r in df_orig.iterrows():
-                        k = acct_key(r["Account Number"])
-                        if k is not None and k not in orig_map:
-                            orig_map[k] = i
                     web_map = {}
-                    for i, r in df_web.iterrows():
-                        k = acct_key(r["Account Number"])
-                        if k is not None and k not in web_map:
-                            web_map[k] = i
+                    if len(key_cols) == 1 and key_cols[0] == "Account Number":
+                        for i, r in df_orig.iterrows():
+                            k = acct_key(r["Account Number"])
+                            if k is not None and k not in orig_map:
+                                orig_map[k] = i
+                        for i, r in df_web.iterrows():
+                            k = acct_key(r["Account Number"])
+                            if k is not None and k not in web_map:
+                                web_map[k] = i
+                    else:
+                        for i, r in df_orig.iterrows():
+                            k = composite_acct_key(r, key_cols)
+                            if k is not None and k not in orig_map:
+                                orig_map[k] = i
+                        for i, r in df_web.iterrows():
+                            k = composite_acct_key(r, key_cols)
+                            if k is not None and k not in web_map:
+                                web_map[k] = i
 
-                    out_row = 2
                     for acc in orig_map.keys():
                         orig_idx = orig_map[acc]
                         orig_row = df_orig.loc[orig_idx]
@@ -347,11 +378,7 @@ def compare_excel_with_gain_summary_inline(
                             for col in common_cols:
                                 o_val = norm_for_json(orig_row[col])
                                 triple_row.extend([o_val, "", "Only in Original"])
-                                ci = common_cols.index(col)
-                                main_ws.cell(row=out_row, column=ci * 3 + 1, value=orig_row[col])
-                                main_ws.cell(row=out_row, column=ci * 3 + 3, value="Only in Original").fill = red_fill
                             structured_only_orig.append(triple_row)
-                            out_row += 1
                             rows_compared += 1
                             diff_count += 1
                             continue
@@ -384,17 +411,8 @@ def compare_excel_with_gain_summary_inline(
                                 row_diffs_here += 1
 
                             triple_row.extend([norm_for_json(o_val), norm_for_json(w_val), norm_for_json(diff_val)])
-                            ci = common_cols.index(col)
-                            c_orig = main_ws.cell(row=out_row, column=ci * 3 + 1, value=o_val)
-                            c_web  = main_ws.cell(row=out_row, column=ci * 3 + 2, value=w_val)
-                            c_diff = main_ws.cell(row=out_row, column=ci * 3 + 3, value=diff_val)
-                            if is_diff:
-                                c_orig.fill = red_fill
-                                c_web.fill  = green_fill
-                                c_diff.fill = red_fill
 
                         structured_diff.append(triple_row)
-                        out_row += 1
                         rows_compared += 1
                         diff_count += row_diffs_here
 
@@ -407,11 +425,7 @@ def compare_excel_with_gain_summary_inline(
                         for col in common_cols:
                             w_val = norm_for_json(web_row[col])
                             triple_row.extend(["", w_val, "Only in Website"])
-                            ci = common_cols.index(col)
-                            main_ws.cell(row=out_row, column=ci * 3 + 2, value=web_row[col])
-                            main_ws.cell(row=out_row, column=ci * 3 + 3, value="Only in Website").fill = green_fill
                         structured_only_web.append(triple_row)
-                        out_row += 1
                         rows_compared += 1
                         diff_count += 1
 
@@ -419,7 +433,6 @@ def compare_excel_with_gain_summary_inline(
             else:
                 make_simple_headers()
                 web_key_index = build_key_index(df_web, max_parts=2)
-                out_row = 2
 
                 orig_key_set = {row_key(r, max_parts=2) for _, r in df_orig.iterrows()}
 
@@ -431,10 +444,6 @@ def compare_excel_with_gain_summary_inline(
                     if match_idx is None:
                         rowvals = [norm_for_json(orig_row[col]) for col in common_cols] + ["Only in Original"]
                         structured_only_orig.append(rowvals)
-                        for i, col in enumerate(common_cols, start=1):
-                            main_ws.cell(row=out_row, column=i, value=orig_row[col])
-                        main_ws.cell(row=out_row, column=len(common_cols) + 1, value="Only in Original").fill = red_fill
-                        out_row += 1
                         rows_compared += 1
                         diff_count += 1
                         continue
@@ -443,9 +452,6 @@ def compare_excel_with_gain_summary_inline(
                     if all(values_equal(orig_row[col], web_row[col]) for col in common_cols):
                         rowvals = [norm_for_json(orig_row[col]) for col in common_cols] + ["Common"]
                         structured_common.append(rowvals)
-                        for i, col in enumerate(common_cols, start=1):
-                            main_ws.cell(row=out_row, column=i, value=orig_row[col])
-                        out_row += 1
                         continue
 
                     row_diffs_here = 0
@@ -458,12 +464,6 @@ def compare_excel_with_gain_summary_inline(
                         rowvals.append(norm_for_json(o_val))
                     rowvals.append("Different")
                     structured_diff.append(rowvals)
-                    for i, col in enumerate(common_cols, start=1):
-                        c = main_ws.cell(row=out_row, column=i, value=orig_row[col])
-                        if values_different(orig_row[col], web_row[col]):
-                            c.fill = red_fill
-                    main_ws.cell(row=out_row, column=len(common_cols) + 1, value="Different").fill = red_fill
-                    out_row += 1
                     rows_compared += 1
                     diff_count += row_diffs_here
 
@@ -473,24 +473,8 @@ def compare_excel_with_gain_summary_inline(
                         continue
                     rowvals = [norm_for_json(web_row[col]) for col in common_cols] + ["Only in Website"]
                     structured_only_web.append(rowvals)
-                    for i, col in enumerate(common_cols, start=1):
-                        main_ws.cell(row=out_row, column=i, value=web_row[col])
-                    main_ws.cell(row=out_row, column=len(common_cols) + 1, value="Only in Website").fill = green_fill
-                    out_row += 1
                     rows_compared += 1
                     diff_count += 1
-
-            for ws_auto in (main_ws,):
-                for col in ws_auto.columns:
-                    max_len = 0
-                    col_letter = get_column_letter(col[0].column)
-                    for cell in col:
-                        if cell.value is not None:
-                            try:
-                                max_len = max(max_len, len(str(cell.value)))
-                            except Exception:
-                                max_len = max(max_len, 10)
-                    ws_auto.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
             sheets_structured[sheet_name] = {
                 "common_rows": structured_common,
@@ -498,13 +482,14 @@ def compare_excel_with_gain_summary_inline(
                 "only_in_original_rows": structured_only_orig,
                 "only_in_website_rows": structured_only_web,
                 "rows_compared": rows_compared,
-                "cells_different": diff_count
-                , "_main_ws_name": main_ws.title  # preserve styled sheet name to reuse later
+                "cells_different": diff_count,
+                "_main_ws_name": main_title
             }
 
             summary_rows.append([sheet_name, rows_compared, diff_count, len(structured_common), len(structured_only_orig), len(structured_only_web)])
 
         except Exception as e:
+            traceback.print_exc()
             summary_rows.append([sheet_name, 0, f"ERROR: {e}", 0, 0, 0])
             sheets_structured[sheet_name] = {
                 "common_rows": [],
@@ -522,9 +507,25 @@ def compare_excel_with_gain_summary_inline(
 
         common_rows = sdata.get("common_rows") or []
         if len(common_rows) > 1:
-            ws_common = output_wb.create_sheet(title=f"{sheet_name} Common Rows")
+            safe_common_title = make_safe_title(f"{sheet_name} Common Rows", output_wb)
+            if safe_common_title in output_wb.sheetnames:
+                try:
+                    del output_wb[safe_common_title]
+                except Exception:
+                    pass
+            ws_common = output_wb.create_sheet(title=safe_common_title)
             for r in common_rows:
                 ws_common.append(r)
+            for col_idx in range(1, ws_common.max_column + 1):
+                col_letter = get_column_letter(col_idx)
+                max_len = 0
+                for cell in ws_common[col_letter]:
+                    if cell.value is not None:
+                        try:
+                            max_len = max(max_len, len(str(cell.value)))
+                        except Exception:
+                            max_len = max(max_len, 10)
+                ws_common.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
         header = None
         for key in ("different_rows", "common_rows", "only_in_original_rows", "only_in_website_rows"):
@@ -540,36 +541,56 @@ def compare_excel_with_gain_summary_inline(
                 remaining_rows.extend(lst[1:])
 
         main_ws_name = sdata.get("_main_ws_name")
-        if main_ws_name and main_ws_name in output_wb.sheetnames:
-            new_ws = output_wb[main_ws_name]
-        else:
-            if sheet_name in output_wb.sheetnames:
-                try:
-                    del output_wb[sheet_name]
-                except Exception:
-                    pass
-            new_ws = output_wb.create_sheet(title=sheet_name)
-            if header:
-                new_ws.append(header)
-            for r in remaining_rows:
-                new_ws.append(r)
-            for col_idx in range(1, new_ws.max_column + 1):
-                col_letter = get_column_letter(col_idx)
-                max_len = 0
-                for cell in new_ws[col_letter]:
-                    if cell.value is not None:
-                        try:
-                            max_len = max(max_len, len(str(cell.value)))
-                        except Exception:
-                            max_len = max(max_len, 10)
-                new_ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+        safe_name = main_ws_name if main_ws_name else make_safe_title(sheet_name, output_wb)
+        if safe_name in output_wb.sheetnames:
+            try:
+                del output_wb[safe_name]
+            except Exception:
+                pass
+        new_ws = output_wb.create_sheet(title=safe_name)
+        if header:
+            new_ws.append(header)
+        for r in remaining_rows:
+            new_ws.append(r)
+            for col_idx, val in enumerate(r, start=1):
+                if col_idx % 3 == 1:
+                    new_ws.cell(row=new_ws.max_row, column=col_idx).fill = original_fill
+                elif col_idx % 3 == 2:
+                    new_ws.cell(row=new_ws.max_row, column=col_idx).fill = website_fill
+                elif col_idx % 3 == 0:
+                    if val != "" and val != 0:
+                        new_ws.cell(row=new_ws.max_row, column=col_idx).fill = diff_fill
+        for col_idx in range(1, new_ws.max_column + 1):
+            col_letter = get_column_letter(col_idx)
+            max_len = 0
+            for cell in new_ws[col_letter]:
+                if cell.value is not None:
+                    try:
+                        max_len = max(max_len, len(str(cell.value)))
+                    except Exception:
+                        max_len = max(max_len, 10)
+            new_ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-    ws_summary = output_wb.create_sheet("Summary", index=0)
+    ws_summary = output_wb.create_sheet(make_safe_title("Summary", output_wb), index=0)
     ws_summary.append(["Excel Comparison Report"])
     ws_summary.append([f"Generated On:  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
     ws_summary.append([])
     for row in summary_rows:
         ws_summary.append(row)
+
+    allowed_sheets = {
+        "Summary",
+        "Gain Summary", "8938", "FBAR", "transaction_details","interest_details",
+        "Gain Summary Common Rows", "8938 Common Rows",
+        "FBAR Common Rows", "transaction_details Common Rows","interest_details Common Rows",
+    }
+
+    for sheet in list(output_wb.sheetnames):
+        if sheet not in allowed_sheets:
+            try:
+                del output_wb[sheet]
+            except Exception:
+                pass
 
     out_bytes = io.BytesIO()
     output_wb.save(out_bytes)
@@ -656,7 +677,3 @@ def generate_comparison_excel(original_bytes, website_bytes, output_stream, shee
     output_stream.write(result["excel_bytes"])
 
     return result
-
-# API Views (Django)
-from django.shortcuts import render 
-from django.http import JsonResponse
