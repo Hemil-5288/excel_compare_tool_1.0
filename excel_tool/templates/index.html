@@ -47,7 +47,6 @@
     <div class="card summary-card shadow-sm p-4 mb-4">
       <div class="col-md-2 justify-content-center">
           <label class="form-label">Country</label>
-          <!-- Changed: show only country options (no placeholder) -->
           <select class="form-select" id="countrySelect">
             <option value="usa" selected>USA</option>
             <option value="india">India</option>
@@ -590,7 +589,6 @@ function renderDetails() {
 
 let detailsLoading = false;
 
-/* create a full-screen overlay to block clicks while loading details */
 function showGlobalLoadingOverlay() {
   if (document.getElementById('globalLoadingBlocker')) return;
   const blocker = document.createElement('div');
