@@ -262,7 +262,7 @@ def compare_excel_with_gain_summary_inline(
                 structured_only_web.append([h for h in headers])
 
 
-            if sheet_name in ("Gain Summary", "8938","transaction_details","interest_details") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
+            if sheet_name in ("Gain Summary", "8938","FBAR","transaction_details","interest_details") and ("Account Number" in df_orig.columns) and ("Account Number" in df_web.columns):
                 make_tripled_headers()
 
                 preferred_keys = ["Account Number", "Investment Name", "Purchase Date",]
@@ -271,10 +271,6 @@ def compare_excel_with_gain_summary_inline(
                     key_cols = preferred_keys
                 else:
                     key_cols = ["Account Number"]
-           
-                if sheet_name == "FBAR" and "18" in df_orig.columns and "18" in df_web.columns:
-                    make_tripled_headers()
-                    key_cols = ["18"]
 
                 if sheet_name == "interest_details":
                     special_keys = ["Account Number","date received"]
